@@ -127,7 +127,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening on http://0.0.0.0:${PORT}`);
+    console.log(`Safra.pro disponível em http://localhost:${PORT} (bind 0.0.0.0:${PORT})`);
   });
 }
 
