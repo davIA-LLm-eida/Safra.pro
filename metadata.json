@@ -1,0 +1,8 @@
+{
+  "name": "Remix Cadência — Gestão Operacional",
+  "description": "Plataforma SaaS para pequenas empresas organizarem processos, tarefas, clientes e operações com suporte de Inteligência Artificial.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
