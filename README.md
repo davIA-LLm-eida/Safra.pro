@@ -2,6 +2,8 @@
 
 Plataforma SaaS multiempresa (multi-tenant) para gestão comercial, financeira, operacional e de equipes, desenvolvida em React, TypeScript, Vite, Tailwind CSS, Express e Supabase (PostgreSQL com Row Level Security).
 
+**Aplicação em produção (Vercel):** [https://safra-pro.vercel.app](https://safra-pro.vercel.app)
+
 ---
 
 ## Principais Recursos
