@@ -148,6 +148,36 @@ export function traduzirErroSupabase(erro: unknown, fallback = 'Operação não 
   if (lower.includes('password should be at least')) {
     return 'A senha deve ter pelo menos 6 caracteres.';
   }
+  if (lower.includes('new password should be different') || lower.includes('same_password')) {
+    return 'A nova senha deve ser diferente da senha atual.';
+  }
+  if (lower.includes('signup_disabled') || lower.includes('signups not allowed')) {
+    return 'O cadastro de novos usuários está desabilitado nas configurações do Supabase Auth.';
+  }
+  if (
+    lower.includes('otp_expired') ||
+    lower.includes('token has expired') ||
+    lower.includes('email link is invalid')
+  ) {
+    return 'O link de verificação ou recuperação expirou ou já foi utilizado. Solicite um novo link.';
+  }
+  if (
+    lower.includes('invalid refresh token') ||
+    lower.includes('refresh token not found') ||
+    lower.includes('user from sub claim in jwt does not exist') ||
+    lower.includes('auth session missing')
+  ) {
+    return 'Sua sessão expirou ou não é mais válida. Faça login novamente.';
+  }
+  if (
+    lower.includes('failed to fetch') ||
+    lower.includes('fetch failed') ||
+    lower.includes('networkerror') ||
+    lower.includes('network request failed') ||
+    lower.includes('err_name_not_resolved')
+  ) {
+    return 'Não foi possível conectar ao servidor Supabase. Verifique sua conexão e as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.';
+  }
   if (lower.includes('rate limit')) {
     return 'Muitas tentativas seguidas. Aguarde alguns instantes e tente novamente.';
   }

@@ -71,4 +71,16 @@ test('traduzirErroSupabase converte erros comuns de autenticação e RLS em port
     traduzirErroSupabase(new Error('new row violates row-level security policy')),
     /não tem permissão/,
   );
+  assert.match(
+    traduzirErroSupabase(new Error('Failed to fetch')),
+    /Não foi possível conectar ao servidor Supabase/,
+  );
+  assert.match(
+    traduzirErroSupabase(new Error('Invalid Refresh Token: Refresh Token Not Found')),
+    /sessão expirou/i,
+  );
+  assert.match(
+    traduzirErroSupabase(new Error('New password should be different from the old password')),
+    /diferente da senha atual/,
+  );
 });

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {AlertCircle, Loader2, X} from 'lucide-react';
 import {AiAssistantView} from './components/AiAssistantView';
 import {AuthView, type UsuarioAuthPendente} from './components/AuthView';
@@ -21,7 +21,7 @@ import {
   DEMO_USUARIOS,
   DEMO_VENDAS,
 } from './data/mockData';
-import {getSupabaseClient, isSupabaseConfigured} from './lib/supabase';
+import {getSupabaseClient, obterDiagnosticoSupabase} from './lib/supabase';
 import {
   criarSupabaseRepository,
   type ResultadoCriacaoConvite,
@@ -45,7 +45,12 @@ import type {
   UsuarioPerfil,
   Venda,
 } from './types/database';
-import {podeVerConvites} from './utils/rolePermissions';
+import {podeVerConvites, traduzirErroSupabase} from './utils/rolePermissions';
+import {
+  pathnameParaSecao,
+  resolverSecaoPermitida,
+  secaoParaPathname,
+} from './utils/routes';
 import {
   calcularDashboardKPIs,
   calcularKPIsFinanceiros,
@@ -53,8 +58,10 @@ import {
 } from './utils/workspaceLogic';
 
 export default function App() {
-  const modoSupabase = isSupabaseConfigured();
+  const diagnosticoSupabase = useMemo(() => obterDiagnosticoSupabase(), []);
+  const modoSupabase = diagnosticoSupabase.configurado;
   const repo = useMemo(() => criarSupabaseRepository(), []);
+  const syncSeqRef = useRef(0);
 
   const dataReferenciaISO = useMemo(
     () => (modoSupabase ? new Date().toISOString().slice(0, 10) : '2026-11-25'),
@@ -62,51 +69,54 @@ export default function App() {
   );
   const mesReferencia = dataReferenciaISO.slice(0, 7);
 
-  const iniciarEmAuth =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('view') === 'auth';
-
-  const [autenticado, setAutenticado] = useState<boolean>(
-    modoSupabase ? false : !iniciarEmAuth,
-  );
+  // Nunca iniciar autenticado automaticamente (nem no modo demonstração)
+  const [autenticado, setAutenticado] = useState<boolean>(false);
+  const [modoDemoAtivo, setModoDemoAtivo] = useState<boolean>(false);
   const [carregandoSessao, setCarregandoSessao] = useState<boolean>(modoSupabase);
+  const [modoRedefinicaoSenha, setModoRedefinicaoSenha] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const searchParams = new URLSearchParams(window.location.search);
+    return (
+      hashParams.get('type') === 'recovery' || searchParams.get('type') === 'recovery'
+    );
+  });
   const [usuarioAuthPendente, setUsuarioAuthPendente] =
     useState<UsuarioAuthPendente | null>(null);
   const [usuarioAuthEmail, setUsuarioAuthEmail] = useState<string | undefined>(undefined);
   const [isPrincipal, setIsPrincipal] = useState<boolean>(false);
-  const [erroOperacao, setErroOperacao] = useState<string | null>(null);
+  const [erroOperacao, setErroOperacao] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const searchParams = new URLSearchParams(window.location.search);
+    const erroDesc =
+      hashParams.get('error_description') ||
+      searchParams.get('error_description') ||
+      hashParams.get('error') ||
+      searchParams.get('error');
+    if (!erroDesc) return null;
+    return traduzirErroSupabase(
+      new Error(erroDesc),
+      'Não foi possível concluir a verificação pelo link enviado.',
+    );
+  });
 
-  const [secaoAtiva, setSecaoAtiva] = useState<SecaoAtiva>('dashboard');
+  const [secaoAtiva, setSecaoAtiva] = useState<SecaoAtiva>(() =>
+    typeof window !== 'undefined' ? pathnameParaSecao(window.location.pathname) : 'dashboard',
+  );
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
-  const [empresas, setEmpresas] = useState<Empresa[]>(
-    modoSupabase ? [] : DEMO_EMPRESAS,
-  );
-  const [usuarios, setUsuarios] = useState<UsuarioPerfil[]>(
-    modoSupabase ? [] : DEMO_USUARIOS,
-  );
-  const [empresaAtivaId, setEmpresaAtivaId] = useState<string>(
-    modoSupabase ? '' : DEMO_EMPRESAS[0].id,
-  );
-  const [usuarioAtivoId, setUsuarioAtivoId] = useState<string>(
-    modoSupabase ? '' : DEMO_USUARIOS[0].id,
-  );
+  // Nunca pré-carregar dados DEMO antes de escolha explícita (e nunca quando modoSupabase=true)
+  const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [usuarios, setUsuarios] = useState<UsuarioPerfil[]>([]);
+  const [empresaAtivaId, setEmpresaAtivaId] = useState<string>('');
+  const [usuarioAtivoId, setUsuarioAtivoId] = useState<string>('');
 
-  const [clientes, setClientes] = useState<Cliente[]>(
-    modoSupabase ? [] : DEMO_CLIENTES,
-  );
-  const [processos, setProcessos] = useState<Processo[]>(
-    modoSupabase ? [] : DEMO_PROCESSOS,
-  );
-  const [tarefas, setTarefas] = useState<Tarefa[]>(
-    modoSupabase ? [] : DEMO_TAREFAS,
-  );
-  const [lancamentos, setLancamentos] = useState<LancamentoFinanceiro[]>(
-    modoSupabase ? [] : DEMO_LANCAMENTOS,
-  );
-  const [vendas, setVendas] = useState<Venda[]>(
-    modoSupabase ? [] : DEMO_VENDAS,
-  );
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [processos, setProcessos] = useState<Processo[]>([]);
+  const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [lancamentos, setLancamentos] = useState<LancamentoFinanceiro[]>([]);
+  const [vendas, setVendas] = useState<Venda[]>([]);
   const [convites, setConvites] = useState<ConviteEmpresa[]>([]);
 
   const [empresasPrincipal, setEmpresasPrincipal] = useState<EmpresaPrincipalResumo[]>([]);
@@ -120,6 +130,7 @@ export default function App() {
 
   const limparDadosSessao = useCallback(() => {
     setAutenticado(false);
+    setModoDemoAtivo(false);
     setUsuarioAuthPendente(null);
     setUsuarioAuthEmail(undefined);
     setIsPrincipal(false);
@@ -135,6 +146,10 @@ export default function App() {
     setConvites([]);
     setEmpresasPrincipal([]);
     setErroPrincipal(null);
+    setModalTarefaAberto(false);
+    setModalClienteAberto(false);
+    setModalProcessoAberto(false);
+    setModalFinanceiroAberto(false);
   }, []);
 
   const carregarListaPrincipal = useCallback(async () => {
@@ -196,16 +211,18 @@ export default function App() {
   const sincronizarSessaoSupabase = useCallback(async () => {
     if (!modoSupabase || !repo) return;
 
+    const syncId = ++syncSeqRef.current;
     setCarregandoSessao(true);
-    setErroOperacao(null);
     try {
       const ctx = await repo.obterContextoSessao();
+      if (syncId !== syncSeqRef.current) return;
 
       if (!ctx.autenticado || !ctx.usuarioAuth) {
         limparDadosSessao();
         return;
       }
 
+      setErroOperacao(null);
       setUsuarioAuthEmail(ctx.usuarioAuth.email);
       setIsPrincipal(ctx.isPrincipal);
 
@@ -218,7 +235,11 @@ export default function App() {
         setAutenticado(true);
 
         setSecaoAtiva((atual) =>
-          atual === 'principal' && !ctx.isPrincipal ? 'dashboard' : atual,
+          resolverSecaoPermitida(atual, {
+            autenticado: true,
+            temEmpresa: true,
+            isPrincipal: ctx.isPrincipal,
+          }),
         );
 
         await carregarDadosEmpresa(
@@ -254,17 +275,23 @@ export default function App() {
         setUsuarioAuthPendente(ctx.usuarioAuth);
       }
     } catch (err) {
+      if (syncId !== syncSeqRef.current) return;
       setErroOperacao(
         err instanceof Error ? err.message : 'Erro ao sincronizar sessão com o Supabase.',
       );
       limparDadosSessao();
     } finally {
-      setCarregandoSessao(false);
+      if (syncId === syncSeqRef.current) {
+        setCarregandoSessao(false);
+      }
     }
   }, [modoSupabase, repo, limparDadosSessao, carregarDadosEmpresa, carregarListaPrincipal]);
 
   useEffect(() => {
-    if (!modoSupabase) return;
+    if (!modoSupabase) {
+      setCarregandoSessao(false);
+      return;
+    }
 
     void sincronizarSessaoSupabase();
 
@@ -272,9 +299,22 @@ export default function App() {
     if (!supabase) return;
 
     const {data: authListener} = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setModoRedefinicaoSenha(true);
+        void sincronizarSessaoSupabase();
+        return;
+      }
+
+      if (event === 'SIGNED_OUT') {
+        syncSeqRef.current += 1;
+        setModoRedefinicaoSenha(false);
+        limparDadosSessao();
+        setCarregandoSessao(false);
+        return;
+      }
+
       if (
         event === 'SIGNED_IN' ||
-        event === 'SIGNED_OUT' ||
         event === 'TOKEN_REFRESHED' ||
         event === 'USER_UPDATED'
       ) {
@@ -285,7 +325,17 @@ export default function App() {
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [modoSupabase, sincronizarSessaoSupabase]);
+  }, [modoSupabase, sincronizarSessaoSupabase, limparDadosSessao]);
+
+  // Sincroniza histórico do navegador (botão voltar/avançar)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPopState = () => {
+      setSecaoAtiva(pathnameParaSecao(window.location.pathname));
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const empresaAtiva = useMemo(
     () => empresas.find((e) => e.id === empresaAtivaId) ?? empresas[0] ?? null,
@@ -369,9 +419,55 @@ export default function App() {
     [lancamentos, vendas, empresaAtiva, mesReferencia],
   );
 
-  // Handlers de Autenticação (Demo + Supabase)
+  // Navegação protegida com sincronização de URL
+  const navegarParaSecao = useCallback(
+    (proximaSecao: SecaoAtiva) => {
+      const secaoPermitida = resolverSecaoPermitida(proximaSecao, {
+        autenticado,
+        temEmpresa: Boolean(empresaAtiva),
+        isPrincipal,
+      });
+      setSecaoAtiva(secaoPermitida);
+      if (typeof window !== 'undefined' && autenticado) {
+        const destino = secaoParaPathname(secaoPermitida);
+        if (window.location.pathname !== destino) {
+          window.history.pushState(null, '', destino);
+        }
+      }
+    },
+    [autenticado, empresaAtiva, isPrincipal],
+  );
+
+  // Protege rotas internas quando o estado de acesso muda
+  const secaoProtegida = useMemo(
+    () =>
+      resolverSecaoPermitida(secaoAtiva, {
+        autenticado,
+        temEmpresa: Boolean(empresaAtiva),
+        isPrincipal,
+      }),
+    [secaoAtiva, autenticado, empresaAtiva, isPrincipal],
+  );
+
+  useEffect(() => {
+    if (!autenticado || modoRedefinicaoSenha) return;
+    if (secaoProtegida !== secaoAtiva) {
+      setSecaoAtiva(secaoProtegida);
+    }
+    if (typeof window !== 'undefined') {
+      const destino = secaoParaPathname(secaoProtegida);
+      const temCallbackAuth =
+        window.location.search.includes('code=') ||
+        window.location.hash.includes('access_token=');
+      if (!temCallbackAuth && window.location.pathname !== destino) {
+        window.history.replaceState(null, '', destino);
+      }
+    }
+  }, [autenticado, modoRedefinicaoSenha, secaoProtegida, secaoAtiva]);
+
+  // Handlers de Autenticação (Demo explícito + Supabase)
   function handleTrocarEmpresa(novoEmpresaId: string) {
-    if (modoSupabase) return;
+    if (modoSupabase || !modoDemoAtivo) return;
     setEmpresaAtivaId(novoEmpresaId);
     const usuarioEmpresa = usuarios.find((u) => u.empresaId === novoEmpresaId);
     if (usuarioEmpresa) {
@@ -384,20 +480,36 @@ export default function App() {
   }
 
   function handleEntrarDemo(empresaId: string) {
-    handleTrocarEmpresa(empresaId);
+    if (modoSupabase) return;
+    setErroOperacao(null);
+    setEmpresas(DEMO_EMPRESAS);
+    setUsuarios(DEMO_USUARIOS);
+    setClientes(DEMO_CLIENTES);
+    setProcessos(DEMO_PROCESSOS);
+    setTarefas(DEMO_TAREFAS);
+    setLancamentos(DEMO_LANCAMENTOS);
+    setVendas(DEMO_VENDAS);
+    setEmpresaAtivaId(empresaId);
+    const usuarioEmpresa = DEMO_USUARIOS.find((u) => u.empresaId === empresaId);
+    if (usuarioEmpresa) {
+      setUsuarioAtivoId(usuarioEmpresa.id);
+    }
+    setModoDemoAtivo(true);
     setAutenticado(true);
     setSecaoAtiva('dashboard');
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', '/');
+    }
   }
 
   function handleEntrarComCredenciais(email: string): boolean {
-    const encontrado = usuarios.find(
+    if (modoSupabase) return false;
+    const encontrado = DEMO_USUARIOS.find(
       (u) => u.email.toLowerCase() === email.toLowerCase(),
     );
     if (!encontrado) return false;
-    setEmpresaAtivaId(encontrado.empresaId);
+    handleEntrarDemo(encontrado.empresaId);
     setUsuarioAtivoId(encontrado.id);
-    setAutenticado(true);
-    setSecaoAtiva('dashboard');
     return true;
   }
 
@@ -430,10 +542,16 @@ export default function App() {
       papel: 'admin',
     };
 
-    setEmpresas((prev) => [...prev, novaEmpresa]);
-    setUsuarios((prev) => [...prev, novoUsuario]);
+    setEmpresas([...DEMO_EMPRESAS, novaEmpresa]);
+    setUsuarios([...DEMO_USUARIOS, novoUsuario]);
+    setClientes(DEMO_CLIENTES);
+    setProcessos(DEMO_PROCESSOS);
+    setTarefas(DEMO_TAREFAS);
+    setLancamentos(DEMO_LANCAMENTOS);
+    setVendas(DEMO_VENDAS);
     setEmpresaAtivaId(novaEmpresaId);
     setUsuarioAtivoId(novoUsuarioId);
+    setModoDemoAtivo(true);
     setAutenticado(true);
     setSecaoAtiva('dashboard');
 
@@ -539,16 +657,35 @@ export default function App() {
     await repo.enviarRecuperacaoSenha(email);
   }
 
+  async function handleSupabaseAtualizarSenha(novaSenha: string) {
+    if (!repo) return;
+    await repo.atualizarSenhaUsuario(novaSenha);
+    setModoRedefinicaoSenha(false);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', window.location.pathname || '/');
+    }
+    await sincronizarSessaoSupabase();
+  }
+
   async function handleSair() {
     setErroOperacao(null);
+    setModoRedefinicaoSenha(false);
     if (modoSupabase && repo) {
       try {
         await repo.sairSessao();
       } finally {
         limparDadosSessao();
+        setSecaoAtiva('dashboard');
+        if (typeof window !== 'undefined') {
+          window.history.replaceState(null, '', '/');
+        }
       }
     } else {
-      setAutenticado(false);
+      limparDadosSessao();
+      setSecaoAtiva('dashboard');
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', '/');
+      }
     }
   }
 
@@ -1085,11 +1222,14 @@ export default function App() {
     );
   }
 
-  if (!autenticado) {
+  if (!autenticado || modoRedefinicaoSenha) {
     return (
       <AuthView
         modoSupabase={modoSupabase}
-        empresasDisponiveis={empresas}
+        diagnosticoSupabase={diagnosticoSupabase}
+        erroSessao={erroOperacao}
+        modoRedefinicaoSenha={modoRedefinicaoSenha}
+        empresasDisponiveis={modoSupabase ? [] : DEMO_EMPRESAS}
         usuarioAuthPendente={usuarioAuthPendente}
         onEntrarDemo={handleEntrarDemo}
         onEntrarComCredenciais={handleEntrarComCredenciais}
@@ -1100,6 +1240,7 @@ export default function App() {
         onSupabaseProvisionarEmpresa={handleSupabaseProvisionarEmpresa}
         onSupabaseCadastrarPrincipal={handleSupabaseCadastrarPrincipal}
         onSupabaseRecuperarSenha={handleSupabaseRecuperarSenha}
+        onSupabaseAtualizarSenha={handleSupabaseAtualizarSenha}
         onSupabaseRecarregarSessao={sincronizarSessaoSupabase}
         onSupabaseSair={handleSair}
       />
@@ -1110,19 +1251,19 @@ export default function App() {
   let onAcaoPrincipal: (() => void) | undefined;
 
   if (empresaAtiva) {
-    if (secaoAtiva === 'dashboard' || secaoAtiva === 'financeiro') {
+    if (secaoProtegida === 'dashboard' || secaoProtegida === 'financeiro') {
       labelAcaoPrincipal = 'Novo lançamento';
       onAcaoPrincipal = () => {
-        setSecaoAtiva('financeiro');
+        navegarParaSecao('financeiro');
         setModalFinanceiroAberto(true);
       };
-    } else if (secaoAtiva === 'tarefas') {
+    } else if (secaoProtegida === 'tarefas') {
       labelAcaoPrincipal = 'Nova tarefa';
       onAcaoPrincipal = () => setModalTarefaAberto(true);
-    } else if (secaoAtiva === 'clientes') {
+    } else if (secaoProtegida === 'clientes') {
       labelAcaoPrincipal = 'Novo cliente';
       onAcaoPrincipal = () => setModalClienteAberto(true);
-    } else if (secaoAtiva === 'processos') {
+    } else if (secaoProtegida === 'processos') {
       labelAcaoPrincipal = 'Novo processo';
       onAcaoPrincipal = () => setModalProcessoAberto(true);
     }
@@ -1131,8 +1272,8 @@ export default function App() {
   return (
     <div className="min-h-screen flex bg-[#F6F8F7] text-[#111915]">
       <Sidebar
-        secaoAtiva={secaoAtiva}
-        onSelecionarSecao={setSecaoAtiva}
+        secaoAtiva={secaoProtegida}
+        onSelecionarSecao={navegarParaSecao}
         empresas={empresas}
         empresaAtiva={empresaAtiva}
         onTrocarEmpresa={handleTrocarEmpresa}
@@ -1147,13 +1288,13 @@ export default function App() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar
-          secaoAtiva={secaoAtiva}
+          secaoAtiva={secaoProtegida}
           empresaAtiva={empresaAtiva}
           onAbrirMenuMobile={() => setMenuMobileAberto(true)}
           labelAcaoPrincipal={labelAcaoPrincipal}
           onAcaoPrincipal={onAcaoPrincipal}
           onVoltarVisaoGeral={() =>
-            setSecaoAtiva(empresaAtiva ? 'dashboard' : 'principal')
+            navegarParaSecao(empresaAtiva ? 'dashboard' : 'principal')
           }
         />
 
@@ -1178,7 +1319,7 @@ export default function App() {
             </div>
           )}
 
-          {secaoAtiva === 'dashboard' && empresaAtiva && (
+          {secaoProtegida === 'dashboard' && empresaAtiva && (
             <DashboardView
               empresaAtiva={empresaAtiva}
               tarefas={tarefasDaEmpresa}
@@ -1187,15 +1328,15 @@ export default function App() {
               lancamentos={lancamentosDaEmpresa}
               vendas={vendasDaEmpresa}
               dataReferenciaISO={dataReferenciaISO}
-              onNavegar={setSecaoAtiva}
+              onNavegar={navegarParaSecao}
               onAbrirNovaTarefa={() => {
-                setSecaoAtiva('tarefas');
+                navegarParaSecao('tarefas');
                 setModalTarefaAberto(true);
               }}
             />
           )}
 
-          {secaoAtiva === 'financeiro' && empresaAtiva && (
+          {secaoProtegida === 'financeiro' && empresaAtiva && (
             <FinancialSalesView
               empresaId={empresaAtiva.id}
               empresaNome={empresaAtiva.nome}
@@ -1218,7 +1359,7 @@ export default function App() {
             />
           )}
 
-          {secaoAtiva === 'tarefas' && empresaAtiva && (
+          {secaoProtegida === 'tarefas' && empresaAtiva && (
             <TasksView
               empresaId={empresaAtiva.id}
               tarefas={tarefasDaEmpresa}
@@ -1234,7 +1375,7 @@ export default function App() {
             />
           )}
 
-          {secaoAtiva === 'clientes' && empresaAtiva && (
+          {secaoProtegida === 'clientes' && empresaAtiva && (
             <ClientsView
               clientes={clientesDaEmpresa}
               tarefas={tarefasDaEmpresa}
@@ -1249,7 +1390,7 @@ export default function App() {
             />
           )}
 
-          {secaoAtiva === 'processos' && empresaAtiva && (
+          {secaoProtegida === 'processos' && empresaAtiva && (
             <ProcessesView
               processos={processosDaEmpresa}
               clientes={clientesDaEmpresa}
@@ -1265,7 +1406,7 @@ export default function App() {
             />
           )}
 
-          {secaoAtiva === 'equipe' && empresaAtiva && usuarioAtivo && (
+          {secaoProtegida === 'equipe' && empresaAtiva && usuarioAtivo && (
             <TeamManagementView
               modoSupabase={modoSupabase}
               empresaAtiva={empresaAtiva}
@@ -1282,7 +1423,7 @@ export default function App() {
             />
           )}
 
-          {secaoAtiva === 'principal' && isPrincipal && (
+          {secaoProtegida === 'principal' && isPrincipal && (
             <PrincipalView
               empresas={empresasPrincipal}
               carregando={carregandoPrincipal}
@@ -1291,7 +1432,7 @@ export default function App() {
             />
           )}
 
-          {secaoAtiva === 'assistente' && empresaAtiva && (
+          {secaoProtegida === 'assistente' && empresaAtiva && (
             <AiAssistantView
               empresaAtiva={empresaAtiva}
               kpis={kpis}
@@ -1299,7 +1440,7 @@ export default function App() {
             />
           )}
 
-          {secaoAtiva === 'integracao' && <SupabaseReadinessView />}
+          {secaoProtegida === 'integracao' && <SupabaseReadinessView />}
         </main>
       </div>
     </div>

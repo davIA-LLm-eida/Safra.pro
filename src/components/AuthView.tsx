@@ -17,6 +17,7 @@ import {
   User,
 } from 'lucide-react';
 import type {Empresa, UsuarioPerfil} from '../types/database';
+import type {DiagnosticoConfiguracaoSupabase} from '../utils/supabaseConfig';
 import {BrandWordmark, SafraIcon} from './BrandMark';
 
 export interface UsuarioAuthPendente {
@@ -27,6 +28,9 @@ export interface UsuarioAuthPendente {
 
 interface AuthViewProps {
   modoSupabase: boolean;
+  diagnosticoSupabase: DiagnosticoConfiguracaoSupabase;
+  erroSessao?: string | null;
+  modoRedefinicaoSenha?: boolean;
   empresasDisponiveis: Empresa[];
   usuarioAuthPendente?: UsuarioAuthPendente | null;
   onEntrarDemo: (empresaId: string) => void;
@@ -69,16 +73,19 @@ interface AuthViewProps {
     senha: string;
   }) => Promise<{precisaConfirmarEmail: boolean}>;
   onSupabaseRecuperarSenha?: (email: string) => Promise<void>;
+  onSupabaseAtualizarSenha?: (novaSenha: string) => Promise<void>;
   onSupabaseRecarregarSessao?: () => Promise<void>;
   onSupabaseSair?: () => Promise<void>;
 }
 
 export function AuthView({
   modoSupabase,
+  diagnosticoSupabase,
+  erroSessao,
+  modoRedefinicaoSenha = false,
   empresasDisponiveis,
   usuarioAuthPendente,
   onEntrarDemo,
-  onEntrarComCredenciais,
   onCadastrarEmpresaEUsuario,
   onSupabaseLogin,
   onSupabaseCadastrarConta,
@@ -86,6 +93,7 @@ export function AuthView({
   onSupabaseProvisionarEmpresa,
   onSupabaseCadastrarPrincipal,
   onSupabaseRecuperarSenha,
+  onSupabaseAtualizarSenha,
   onSupabaseRecarregarSessao,
   onSupabaseSair,
 }: AuthViewProps) {
@@ -93,10 +101,11 @@ export function AuthView({
   const [abaOnboarding, setAbaOnboarding] = useState<'empresa' | 'convite' | 'principal'>('empresa');
   const [modoRecuperacao, setModoRecuperacao] = useState(false);
 
-  const [emailLogin, setEmailLogin] = useState(
-    modoSupabase ? '' : 'camila@clinicahorizonte.com.br',
-  );
-  const [senhaLogin, setSenhaLogin] = useState(modoSupabase ? '' : 'demo1234');
+  const [emailLogin, setEmailLogin] = useState('');
+  const [senhaLogin, setSenhaLogin] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmarNovaSenha, setConfirmarNovaSenha] = useState('');
+  const [mostrarDemoLocal, setMostrarDemoLocal] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -132,18 +141,15 @@ export function AuthView({
     e.preventDefault();
     limparMensagens();
 
-    if (!emailLogin.trim() || (!modoRecuperacao && !senhaLogin.trim())) {
-      setErro('Preencha e-mail e senha para continuar.');
+    if (!modoSupabase) {
+      setErro(
+        'Autenticação real indisponível: configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no arquivo .env.local e reinicie a aplicação. Para explorar dados fictícios offline, utilize a opção "Modo Demonstração Local" abaixo.',
+      );
       return;
     }
 
-    if (!modoSupabase) {
-      const ok = onEntrarComCredenciais(emailLogin.trim());
-      if (!ok) {
-        setErro(
-          'E-mail não encontrado nos perfis de demonstração. Use o acesso rápido abaixo ou crie uma nova empresa.',
-        );
-      }
+    if (!emailLogin.trim() || (!modoRecuperacao && !senhaLogin.trim())) {
+      setErro('Preencha e-mail e senha para continuar.');
       return;
     }
 
@@ -169,6 +175,33 @@ export function AuthView({
       await onSupabaseLogin(emailLogin.trim(), senhaLogin);
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Não foi possível autenticar.');
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function handleRedefinirSenhaSubmit(e: FormEvent) {
+    e.preventDefault();
+    limparMensagens();
+    if (!onSupabaseAtualizarSenha) return;
+
+    if (novaSenha.trim().length < 6) {
+      setErro('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (novaSenha !== confirmarNovaSenha) {
+      setErro('A confirmação de senha não confere.');
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      await onSupabaseAtualizarSenha(novaSenha);
+      setNovaSenha('');
+      setConfirmarNovaSenha('');
+      setSucesso('Senha redefinida com sucesso!');
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Não foi possível redefinir a senha.');
     } finally {
       setEnviando(false);
     }
@@ -444,21 +477,132 @@ export function AuthView({
       <main className="flex-1 flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md">
           {/* Aviso transparente do estado de integração */}
-          <div className="mb-6 p-4 bg-white border border-[#E2E8E4] rounded-xl">
-            <p className="text-xs font-semibold text-[#111915]">
-              {modoSupabase
-                ? 'Supabase conectado'
-                : 'Modo Demonstração (Dados locais fictícios)'}
-            </p>
-            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-              {modoSupabase
-                ? 'Autenticação real e isolamento multi-tenant ativos com PostgreSQL RLS.'
-                : 'O Supabase ainda não foi conectado neste ambiente. Explore o sistema completo com dados locais ou cadastre uma nova empresa para testar.'}
-            </p>
-          </div>
+          {modoSupabase ? (
+            <div className="mb-6 p-4 bg-white border border-[#E2E8E4] rounded-xl">
+              <p className="text-xs font-semibold text-[#15803D] flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span>Supabase conectado</span>
+              </p>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Autenticação real e isolamento multi-tenant ativos com PostgreSQL RLS.
+              </p>
+            </div>
+          ) : (
+            <div
+              role="alert"
+              className={`mb-6 p-4 rounded-xl border ${
+                diagnosticoSupabase.statusUrl === 'invalida' ||
+                diagnosticoSupabase.statusChave === 'invalida'
+                  ? 'bg-red-50 border-red-200 text-red-950'
+                  : 'bg-amber-50 border-amber-200 text-amber-950'
+              }`}
+            >
+              <p className="text-xs font-semibold flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span>
+                  {diagnosticoSupabase.statusUrl === 'invalida' ||
+                  diagnosticoSupabase.statusChave === 'invalida'
+                    ? 'Configuração do Supabase inválida'
+                    : 'Supabase não configurado neste ambiente'}
+                </span>
+              </p>
+              <p className="text-xs mt-1.5 leading-relaxed">
+                {diagnosticoSupabase.motivoBloqueio ??
+                  'As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY precisam estar configuradas.'}
+              </p>
+              <p className="text-[11px] mt-2 opacity-90 leading-relaxed">
+                Para conectar ao banco real, copie{' '}
+                <code className="font-mono bg-white/70 px-1 py-0.5 rounded">.env.example</code> para{' '}
+                <code className="font-mono bg-white/70 px-1 py-0.5 rounded">.env.local</code>,
+                preencha a Project URL e a Publishable/anon key pública e reinicie o servidor.
+              </p>
+            </div>
+          )}
 
-          {/* Onboarding pós-login (usuário autenticado no Auth, ainda sem empresa vinculada) */}
-          {modoSupabase && usuarioAuthPendente ? (
+          {/* Fluxo dedicado de redefinição de senha via link de recuperação */}
+          {modoSupabase && modoRedefinicaoSenha ? (
+            <div className="bg-white border border-[#E2E8E4] rounded-xl p-6 sm:p-8 space-y-5">
+              <div className="flex items-start justify-between gap-3 pb-4 border-b border-[#E2E8E4]">
+                <div>
+                  <p className="text-xs font-semibold text-[#15803D]">Recuperação de acesso</p>
+                  <h2 className="font-display text-lg font-semibold text-[#111915] mt-0.5">
+                    Definir nova senha
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Crie uma nova senha para concluir a recuperação da sua conta.
+                  </p>
+                </div>
+                {onSupabaseSair && (
+                  <button
+                    type="button"
+                    onClick={() => void onSupabaseSair()}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 border border-[#E2E8E4] rounded-lg cursor-pointer shrink-0"
+                  >
+                    <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Cancelar</span>
+                  </button>
+                )}
+              </div>
+
+              {(erro || erroSessao) && (
+                <div
+                  role="alert"
+                  className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2.5 text-xs text-red-800"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" aria-hidden="true" />
+                  <span>{erro ?? erroSessao}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleRedefinirSenhaSubmit} className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="reset-nova-senha"
+                    className="block text-sm font-medium text-slate-700 mb-1"
+                  >
+                    Nova senha (mínimo 6 caracteres)
+                  </label>
+                  <input
+                    id="reset-nova-senha"
+                    type="password"
+                    minLength={6}
+                    value={novaSenha}
+                    onChange={(e) => setNovaSenha(e.target.value)}
+                    placeholder="Digite sua nova senha"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="reset-confirmar-senha"
+                    className="block text-sm font-medium text-slate-700 mb-1"
+                  >
+                    Confirmar nova senha
+                  </label>
+                  <input
+                    id="reset-confirmar-senha"
+                    type="password"
+                    minLength={6}
+                    value={confirmarNovaSenha}
+                    onChange={(e) => setConfirmarNovaSenha(e.target.value)}
+                    placeholder="Repita a nova senha"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={enviando}
+                  className="w-full py-2.5 px-4 bg-[#15803D] hover:bg-[#166534] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                >
+                  {enviando ? 'Salvando senha...' : 'Salvar nova senha e entrar'}
+                </button>
+              </form>
+            </div>
+          ) : modoSupabase && usuarioAuthPendente ? (
             <div className="bg-white border border-[#E2E8E4] rounded-xl p-6 sm:p-8 space-y-5">
               <div className="flex items-start justify-between gap-3 pb-4 border-b border-[#E2E8E4]">
                 <div className="min-w-0">
@@ -826,13 +970,13 @@ export function AuthView({
                 )}
               </div>
 
-              {erro && (
+              {(erro || erroSessao) && (
                 <div
                   role="alert"
                   className="mb-5 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2.5 text-xs text-red-800"
                 >
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" aria-hidden="true" />
-                  <span>{erro}</span>
+                  <span>{erro ?? erroSessao}</span>
                 </div>
               )}
 
@@ -945,29 +1089,49 @@ export function AuthView({
 
                   {!modoSupabase && (
                     <div className="pt-4 mt-4 border-t border-[#E2E8E4]">
-                      <p className="text-xs font-medium text-slate-600 mb-2.5">
-                        Acesso rápido às empresas de demonstração:
-                      </p>
-                      <div className="space-y-2">
-                        {empresasDisponiveis.map((emp) => (
-                          <button
-                            key={emp.id}
-                            type="button"
-                            onClick={() => onEntrarDemo(emp.id)}
-                            className="w-full text-left px-3 py-2.5 border border-[#E2E8E4] hover:border-[#16A34A] hover:bg-[#F6F8F7] rounded-lg transition-colors flex items-center justify-between gap-3 cursor-pointer"
-                          >
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-[#111915] truncate">
-                                {emp.nome}
-                              </p>
-                              <p className="text-xs text-slate-500 truncate">{emp.segmento}</p>
-                            </div>
-                            <span className="text-xs font-medium text-[#15803D] shrink-0">
-                              Acessar
-                            </span>
-                          </button>
-                        ))}
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium text-slate-700">
+                          Ambiente sem Supabase?
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setMostrarDemoLocal((v) => !v)}
+                          className="text-xs font-medium text-[#15803D] hover:text-[#166534] underline cursor-pointer"
+                        >
+                          {mostrarDemoLocal
+                            ? 'Ocultar demonstração local'
+                            : 'Explorar Modo Demonstração'}
+                        </button>
                       </div>
+
+                      {mostrarDemoLocal && (
+                        <div className="mt-3 p-3 bg-[#F6F8F7] border border-[#E2E8E4] rounded-lg space-y-2.5">
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            Os dados abaixo são <strong>fictícios e locais</strong> (sem vínculo
+                            com o Supabase). Utilize apenas para avaliação visual offline.
+                          </p>
+                          <div className="space-y-2">
+                            {empresasDisponiveis.map((emp) => (
+                              <button
+                                key={emp.id}
+                                type="button"
+                                onClick={() => onEntrarDemo(emp.id)}
+                                className="w-full text-left px-3 py-2.5 bg-white border border-[#E2E8E4] hover:border-[#16A34A] rounded-lg transition-colors flex items-center justify-between gap-3 cursor-pointer"
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-[#111915] truncate">
+                                    {emp.nome}
+                                  </p>
+                                  <p className="text-xs text-slate-500 truncate">{emp.segmento}</p>
+                                </div>
+                                <span className="text-xs font-medium text-[#15803D] shrink-0">
+                                  Acessar demo
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </form>

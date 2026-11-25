@@ -96,6 +96,7 @@ export interface WorkspaceRepository {
     nomeCompleto: string,
   ): Promise<{precisaConfirmarEmail: boolean; userId: string | null}>;
   enviarRecuperacaoSenha(email: string): Promise<void>;
+  atualizarSenhaUsuario(novaSenha: string): Promise<void>;
   sairSessao(): Promise<void>;
 
   // Provisionamento, convites e principal
@@ -395,27 +396,52 @@ export function criarSupabaseRepository(): WorkspaceRepository | null {
 
       const {data: userData, error: userError} = await supabase.auth.getUser();
       if (userError || !userData.user) {
-        return {
-          autenticado: false,
-          usuarioAuth: null,
-          isPrincipal: false,
-          perfil: null,
-          empresa: null,
-        };
+        const msgLower = (userError?.message ?? '').toLowerCase();
+        const statusAuth = (userError as {status?: number} | null)?.status;
+        const sessaoInvalida =
+          statusAuth === 401 ||
+          statusAuth === 403 ||
+          msgLower.includes('jwt') ||
+          msgLower.includes('session') ||
+          msgLower.includes('token') ||
+          msgLower.includes('user from sub claim');
+
+        if (sessaoInvalida || !userError) {
+          await supabase.auth.signOut({scope: 'local'}).catch(() => undefined);
+          return {
+            autenticado: false,
+            usuarioAuth: null,
+            isPrincipal: false,
+            perfil: null,
+            empresa: null,
+          };
+        }
+
+        throw new Error(
+          traduzirErroSupabase(userError, 'Falha ao validar sessão do usuário no Supabase.'),
+        );
       }
 
       const authUser = userData.user;
       const emailConfirmado = Boolean(authUser.email_confirmed_at);
 
-      const [{data: isPrincipalData}, {data: perfilData, error: perfilError}] =
-        await Promise.all([
-          supabase.rpc('sou_principal'),
-          supabase.from('perfis').select('*').eq('id', authUser.id).maybeSingle(),
-        ]);
+      const [
+        {data: isPrincipalData, error: principalError},
+        {data: perfilData, error: perfilError},
+      ] = await Promise.all([
+        supabase.rpc('sou_principal'),
+        supabase.from('perfis').select('*').eq('id', authUser.id).maybeSingle(),
+      ]);
 
       if (perfilError) {
         throw new Error(
           traduzirErroSupabase(perfilError, 'Erro ao carregar perfil do usuário.'),
+        );
+      }
+
+      if (principalError && !perfilData) {
+        throw new Error(
+          traduzirErroSupabase(principalError, 'Erro ao verificar permissões da plataforma.'),
         );
       }
 
@@ -497,6 +523,17 @@ export function criarSupabaseRepository(): WorkspaceRepository | null {
       if (error) {
         throw new Error(
           traduzirErroSupabase(error, 'Não foi possível enviar o e-mail de recuperação.'),
+        );
+      }
+    },
+
+    async atualizarSenhaUsuario(novaSenha: string): Promise<void> {
+      const {error} = await supabase.auth.updateUser({
+        password: novaSenha,
+      });
+      if (error) {
+        throw new Error(
+          traduzirErroSupabase(error, 'Não foi possível atualizar sua senha.'),
         );
       }
     },

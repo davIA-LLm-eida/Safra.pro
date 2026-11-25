@@ -29,6 +29,8 @@ export function PrincipalView({
 
   const totalUsuarios = empresas.reduce((acc, e) => acc + e.totalUsuarios, 0);
   const totalAdmins = empresas.reduce((acc, e) => acc + e.totalAdmins, 0);
+  const totalGerentes = empresas.reduce((acc, e) => acc + e.totalGerentes, 0);
+  const totalMembros = empresas.reduce((acc, e) => acc + e.totalMembros, 0);
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -97,7 +99,9 @@ export function PrincipalView({
             {totalUsuarios}
           </p>
           <p className="mt-1 text-xs text-slate-500 tabular-nums">
-            {totalAdmins} {totalAdmins === 1 ? 'administrador' : 'administradores'}
+            {totalAdmins} {totalAdmins === 1 ? 'admin' : 'admins'} · {totalGerentes}{' '}
+            {totalGerentes === 1 ? 'gerente' : 'gerentes'} · {totalMembros}{' '}
+            {totalMembros === 1 ? 'membro' : 'membros'}
           </p>
         </div>
 
