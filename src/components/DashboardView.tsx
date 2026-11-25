@@ -14,6 +14,7 @@ import type {
   Tarefa,
   Venda,
 } from '../types/database';
+import {formatarMesLongo} from '../utils/rolePermissions';
 import {
   calcularDashboardKPIs,
   calcularKPIsFinanceiros,
@@ -48,6 +49,8 @@ export function DashboardView({
   onNavegar,
   onAbrirNovaTarefa,
 }: DashboardViewProps) {
+  const mesReferencia = dataReferenciaISO.slice(0, 7);
+
   const kpis = calcularDashboardKPIs(
     tarefas,
     clientes,
@@ -60,7 +63,7 @@ export function DashboardView({
     lancamentos,
     vendas,
     empresaAtiva.id,
-    '2026-11',
+    mesReferencia,
   );
 
   const serieMensal = calcularSerieMensalFinanceira(lancamentos, empresaAtiva.id, 6);
@@ -85,7 +88,7 @@ export function DashboardView({
             Resumo executivo de {empresaAtiva.nome}
           </h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            Faturamento, renda líquida e operação · Novembro/2026 (Ref.{' '}
+            Faturamento, renda líquida e operação · {formatarMesLongo(mesReferencia)} (Ref.{' '}
             {formatarDataBR(dataReferenciaISO)})
           </p>
         </div>
@@ -191,31 +194,38 @@ export function DashboardView({
               </button>
             </div>
 
-            <div className="mt-4 grid grid-cols-6 gap-2 sm:gap-3 items-end h-40 pt-3 border-b border-[#E2E8E4]">
-              {serieMensal.map((ponto) => {
-                const altRec = Math.max(Math.round((ponto.receitas / maxValorSerie) * 112), 4);
-                const altDesp = Math.max(Math.round((ponto.despesas / maxValorSerie) * 112), 4);
-                return (
-                  <div key={ponto.mes} className="flex flex-col items-center justify-end h-full pb-2">
-                    <div className="flex items-end gap-1 h-[116px]">
-                      <div
-                        title={`Receitas ${ponto.label}: ${formatarMoedaBRL(ponto.receitas)}`}
-                        className="w-3 sm:w-4 bg-[#16A34A] rounded-t"
-                        style={{height: `${altRec}px`}}
-                      />
-                      <div
-                        title={`Despesas ${ponto.label}: ${formatarMoedaBRL(ponto.despesas)}`}
-                        className="w-3 sm:w-4 bg-slate-300 rounded-t"
-                        style={{height: `${altDesp}px`}}
-                      />
+            {serieMensal.length === 0 ? (
+              <div className="mt-4 py-10 text-center text-xs text-slate-500 border-b border-[#E2E8E4]">
+                Nenhum lançamento registrado nos últimos meses. Adicione sua primeira receita ou
+                despesa em Vendas e Financeiro.
+              </div>
+            ) : (
+              <div className="mt-4 grid grid-cols-6 gap-2 sm:gap-3 items-end h-40 pt-3 border-b border-[#E2E8E4]">
+                {serieMensal.map((ponto) => {
+                  const altRec = Math.max(Math.round((ponto.receitas / maxValorSerie) * 112), 4);
+                  const altDesp = Math.max(Math.round((ponto.despesas / maxValorSerie) * 112), 4);
+                  return (
+                    <div key={ponto.mes} className="flex flex-col items-center justify-end h-full pb-2">
+                      <div className="flex items-end gap-1 h-[116px]">
+                        <div
+                          title={`Receitas ${ponto.label}: ${formatarMoedaBRL(ponto.receitas)}`}
+                          className="w-3 sm:w-4 bg-[#16A34A] rounded-t"
+                          style={{height: `${altRec}px`}}
+                        />
+                        <div
+                          title={`Despesas ${ponto.label}: ${formatarMoedaBRL(ponto.despesas)}`}
+                          className="w-3 sm:w-4 bg-slate-300 rounded-t"
+                          style={{height: `${altDesp}px`}}
+                        />
+                      </div>
+                      <span className="mt-2 text-xs font-mono tabular-nums text-slate-500">
+                        {ponto.label}
+                      </span>
                     </div>
-                    <span className="mt-2 text-xs font-mono tabular-nums text-slate-500">
-                      {ponto.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
               <div className="flex items-center gap-4">

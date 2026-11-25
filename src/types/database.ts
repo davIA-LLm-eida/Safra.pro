@@ -8,12 +8,17 @@ export type StatusFinanceiro = 'pago' | 'pendente' | 'atrasado';
 export type FormaPagamento = 'pix' | 'boleto' | 'cartao' | 'transferencia';
 export type EtapaVenda = 'prospeccao' | 'proposta' | 'fechada' | 'perdida';
 
+export type PapelEmpresa = 'admin' | 'gerente' | 'membro';
+export type PapelConvite = 'membro' | 'gerente';
+export type StatusConvite = 'pendente' | 'aceito' | 'revogado' | 'expirado';
+export type PlanoEmpresa = 'essencial' | 'profissional' | 'escala';
+
 export interface Empresa {
   id: string;
   nome: string;
   segmento: string;
   cnpj?: string;
-  plano: 'essencial' | 'profissional' | 'escala';
+  plano: PlanoEmpresa;
   criadoEm: string;
 }
 
@@ -23,7 +28,35 @@ export interface UsuarioPerfil {
   nomeCompleto: string;
   email: string;
   cargo: string;
-  papel: 'admin' | 'membro';
+  papel: PapelEmpresa;
+  criadoEm?: string;
+}
+
+export interface ConviteEmpresa {
+  id: string;
+  empresaId: string;
+  emailConvidado: string;
+  cargo: string;
+  papel: PapelConvite;
+  criadoPor?: string | null;
+  status: StatusConvite;
+  expiraEm: string;
+  aceitoPor?: string | null;
+  aceitoEm?: string | null;
+  criadoEm: string;
+}
+
+export interface EmpresaPrincipalResumo {
+  empresaId: string;
+  nome: string;
+  segmento: string;
+  cnpj?: string;
+  plano: PlanoEmpresa;
+  criadoEm: string;
+  totalUsuarios: number;
+  totalAdmins: number;
+  totalGerentes: number;
+  totalMembros: number;
 }
 
 export interface Cliente {
@@ -88,6 +121,7 @@ export interface LancamentoFinanceiro {
   data: string; // ISO YYYY-MM-DD
   status: StatusFinanceiro;
   formaPagamento: FormaPagamento;
+  criadoEm?: string;
 }
 
 export interface Venda {
@@ -102,6 +136,7 @@ export interface Venda {
   formaPagamento: FormaPagamento;
   faturada: boolean;
   observacoes?: string;
+  criadoEm?: string;
 }
 
 export type SecaoAtiva =
@@ -110,6 +145,8 @@ export type SecaoAtiva =
   | 'tarefas'
   | 'clientes'
   | 'processos'
+  | 'equipe'
+  | 'principal'
   | 'assistente'
   | 'integracao';
 
@@ -122,7 +159,7 @@ export interface Database {
           nome: string;
           segmento: string;
           cnpj: string | null;
-          plano: 'essencial' | 'profissional' | 'escala';
+          plano: PlanoEmpresa;
           criado_em: string;
         };
         Insert: {
@@ -130,13 +167,13 @@ export interface Database {
           nome: string;
           segmento?: string;
           cnpj?: string | null;
-          plano?: 'essencial' | 'profissional' | 'escala';
+          plano?: PlanoEmpresa;
+          criado_em?: string;
         };
         Update: {
           nome?: string;
           segmento?: string;
           cnpj?: string | null;
-          plano?: 'essencial' | 'profissional' | 'escala';
         };
         Relationships: [];
       };
@@ -147,7 +184,7 @@ export interface Database {
           nome_completo: string;
           email: string;
           cargo: string;
-          papel: 'admin' | 'membro';
+          papel: PapelEmpresa;
           criado_em: string;
         };
         Insert: {
@@ -156,12 +193,44 @@ export interface Database {
           nome_completo: string;
           email: string;
           cargo?: string;
-          papel?: 'admin' | 'membro';
+          papel?: PapelEmpresa;
+          criado_em?: string;
         };
         Update: {
           nome_completo?: string;
           cargo?: string;
-          papel?: 'admin' | 'membro';
+        };
+        Relationships: [];
+      };
+      convites_empresa: {
+        Row: {
+          id: string;
+          empresa_id: string;
+          email_convidado: string;
+          cargo: string;
+          papel: PapelConvite;
+          criado_por: string | null;
+          status: StatusConvite;
+          expira_em: string;
+          aceito_por: string | null;
+          aceito_em: string | null;
+          criado_em: string;
+        };
+        Insert: {
+          id?: string;
+          empresa_id: string;
+          email_convidado: string;
+          cargo?: string;
+          papel?: PapelConvite;
+          criado_por?: string | null;
+          status?: StatusConvite;
+          expira_em?: string;
+          aceito_por?: string | null;
+          aceito_em?: string | null;
+          criado_em?: string;
+        };
+        Update: {
+          status?: StatusConvite;
         };
         Relationships: [];
       };
@@ -190,6 +259,7 @@ export interface Database {
           responsavel: string;
           status?: StatusCliente;
           observacoes?: string;
+          criado_em?: string;
         };
         Update: {
           nome?: string;
@@ -224,6 +294,7 @@ export interface Database {
           responsavel: string;
           status?: StatusProcesso;
           descricao?: string;
+          criado_em?: string;
         };
         Update: {
           cliente_id?: string | null;
@@ -284,6 +355,7 @@ export interface Database {
           status?: StatusTarefa;
           prazo: string;
           responsavel: string;
+          criado_em?: string;
         };
         Update: {
           cliente_id?: string | null;
@@ -294,6 +366,48 @@ export interface Database {
           status?: StatusTarefa;
           prazo?: string;
           responsavel?: string;
+        };
+        Relationships: [];
+      };
+      vendas: {
+        Row: {
+          id: string;
+          empresa_id: string;
+          cliente_id: string | null;
+          titulo: string;
+          responsavel: string;
+          valor: number;
+          etapa: EtapaVenda;
+          data_prevista: string;
+          forma_pagamento: FormaPagamento;
+          faturada: boolean;
+          observacoes: string;
+          criado_em: string;
+        };
+        Insert: {
+          id?: string;
+          empresa_id: string;
+          cliente_id?: string | null;
+          titulo: string;
+          responsavel: string;
+          valor: number;
+          etapa?: EtapaVenda;
+          data_prevista: string;
+          forma_pagamento?: FormaPagamento;
+          faturada?: boolean;
+          observacoes?: string;
+          criado_em?: string;
+        };
+        Update: {
+          cliente_id?: string | null;
+          titulo?: string;
+          responsavel?: string;
+          valor?: number;
+          etapa?: EtapaVenda;
+          data_prevista?: string;
+          forma_pagamento?: FormaPagamento;
+          faturada?: boolean;
+          observacoes?: string;
         };
         Relationships: [];
       };
@@ -310,6 +424,7 @@ export interface Database {
           data: string;
           status: StatusFinanceiro;
           forma_pagamento: FormaPagamento;
+          criado_em: string;
         };
         Insert: {
           id?: string;
@@ -323,9 +438,11 @@ export interface Database {
           data: string;
           status?: StatusFinanceiro;
           forma_pagamento?: FormaPagamento;
+          criado_em?: string;
         };
         Update: {
           cliente_id?: string | null;
+          venda_id?: string | null;
           tipo?: TipoLancamento;
           descricao?: string;
           categoria?: string;
@@ -336,48 +453,102 @@ export interface Database {
         };
         Relationships: [];
       };
-      vendas: {
-        Row: {
-          id: string;
-          empresa_id: string;
-          cliente_id: string | null;
-          titulo: string;
-          responsavel: string;
-          valor: number;
-          etapa: EtapaVenda;
-          data_prevista: string;
-          forma_pagamento: FormaPagamento;
-          faturada: boolean;
-          observacoes: string | null;
-        };
-        Insert: {
-          id?: string;
-          empresa_id: string;
-          cliente_id?: string | null;
-          titulo: string;
-          responsavel: string;
-          valor: number;
-          etapa?: EtapaVenda;
-          data_prevista: string;
-          forma_pagamento?: FormaPagamento;
-          faturada?: boolean;
-          observacoes?: string | null;
-        };
-        Update: {
-          cliente_id?: string | null;
-          titulo?: string;
-          responsavel?: string;
-          valor?: number;
-          etapa?: EtapaVenda;
-          data_prevista?: string;
-          forma_pagamento?: FormaPagamento;
-          faturada?: boolean;
-          observacoes?: string | null;
-        };
-        Relationships: [];
-      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      current_empresa_id: {
+        Args: Record<PropertyKey, never>;
+        Returns: string | null;
+      };
+      current_user_papel: {
+        Args: Record<PropertyKey, never>;
+        Returns: PapelEmpresa | null;
+      };
+      is_empresa_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      is_empresa_gestor: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      sou_principal: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      listar_empresas_principal: {
+        Args: Record<PropertyKey, never>;
+        Returns: Array<{
+          empresa_id: string;
+          nome: string;
+          segmento: string;
+          cnpj: string | null;
+          plano: PlanoEmpresa;
+          criado_em: string;
+          total_usuarios: number;
+          total_admins: number;
+          total_gerentes: number;
+          total_membros: number;
+        }>;
+      };
+      provisionar_empresa_inicial: {
+        Args: {
+          p_nome_empresa: string;
+          p_segmento?: string;
+          p_cnpj?: string | null;
+          p_nome_completo?: string | null;
+          p_cargo?: string;
+        };
+        Returns: Array<{
+          empresa_id: string;
+          perfil_id: string;
+          papel: PapelEmpresa;
+        }>;
+      };
+      criar_convite_empresa: {
+        Args: {
+          p_email_convidado: string;
+          p_cargo?: string | null;
+          p_dias_validade?: number;
+          p_papel?: PapelConvite;
+        };
+        Returns: Array<{
+          convite_criado: boolean;
+          status_resultado: string;
+          mensagem: string;
+          convite_id: string | null;
+          empresa_id: string;
+          email_convidado: string;
+          token_convite: string | null;
+          expira_em: string | null;
+        }>;
+      };
+      aceitar_convite_empresa: {
+        Args: {
+          p_token: string;
+          p_nome_completo?: string | null;
+        };
+        Returns: Array<{
+          aceito: boolean;
+          status_convite: string;
+          mensagem: string;
+          empresa_id: string | null;
+          perfil_id: string | null;
+          papel: PapelEmpresa | null;
+        }>;
+      };
+      autorizar_alteracao_papel_membro: {
+        Args: {
+          p_alvo_usuario_id: string;
+          p_novo_papel: PapelEmpresa;
+          p_confirmar_autorizacao?: boolean;
+        };
+        Returns: Array<{
+          perfil_id: string;
+          empresa_id: string;
+          papel: PapelEmpresa;
+        }>;
+      };
+    };
   };
 }

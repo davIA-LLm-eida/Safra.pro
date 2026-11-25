@@ -3,7 +3,7 @@ import type {Empresa, SecaoAtiva} from '../types/database';
 
 interface TopBarProps {
   secaoAtiva: SecaoAtiva;
-  empresaAtiva: Empresa;
+  empresaAtiva: Empresa | null;
   onAbrirMenuMobile: () => void;
   onAcaoPrincipal?: () => void;
   labelAcaoPrincipal?: string;
@@ -16,6 +16,8 @@ const TITULOS_SECAO: Record<SecaoAtiva, string> = {
   tarefas: 'Gestão de Tarefas',
   clientes: 'Clientes',
   processos: 'Processos Empresariais',
+  equipe: 'Empresa e Equipe',
+  principal: 'Plataforma · Principal',
   assistente: 'Assistente de IA',
   integracao: 'Dados e Supabase',
 };
@@ -28,6 +30,10 @@ export function TopBar({
   labelAcaoPrincipal,
   onVoltarVisaoGeral,
 }: TopBarProps) {
+  const mostrarVoltar = empresaAtiva
+    ? secaoAtiva !== 'dashboard'
+    : secaoAtiva !== 'principal';
+
   return (
     <header className="h-16 bg-white border-b border-[#E2E8E4] px-4 sm:px-6 flex items-center justify-between gap-4 shrink-0">
       {/* Zona 1: Menu mobile + Breadcrumb de contexto */}
@@ -42,7 +48,9 @@ export function TopBar({
         </button>
 
         <div className="flex items-center gap-2 text-sm min-w-0">
-          <span className="text-slate-500 truncate hidden sm:inline">{empresaAtiva.nome}</span>
+          <span className="text-slate-500 truncate hidden sm:inline">
+            {empresaAtiva ? empresaAtiva.nome : 'Safra.pro · Plataforma'}
+          </span>
           <span className="text-slate-300 hidden sm:inline" aria-hidden="true">
             /
           </span>
@@ -52,16 +60,22 @@ export function TopBar({
         </div>
       </div>
 
-      {/* Zona 2: Segmento discreto da empresa */}
+      {/* Zona 2: Segmento discreto da empresa ou escopo principal */}
       <div className="hidden md:flex items-center text-xs text-slate-500 whitespace-nowrap shrink-0">
-        <span>{empresaAtiva.segmento}</span>
-        {empresaAtiva.cnpj && (
+        {empresaAtiva ? (
           <>
-            <span className="mx-2 text-slate-300" aria-hidden="true">
-              ·
-            </span>
-            <span className="font-mono tabular-nums">{empresaAtiva.cnpj}</span>
+            <span>{empresaAtiva.segmento}</span>
+            {empresaAtiva.cnpj && (
+              <>
+                <span className="mx-2 text-slate-300" aria-hidden="true">
+                  ·
+                </span>
+                <span className="font-mono tabular-nums">{empresaAtiva.cnpj}</span>
+              </>
+            )}
           </>
+        ) : (
+          <span>Visão agregada somente leitura</span>
         )}
       </div>
 
@@ -76,15 +90,15 @@ export function TopBar({
             <Plus className="w-4 h-4 shrink-0" aria-hidden="true" />
             <span>{labelAcaoPrincipal}</span>
           </button>
-        ) : (
+        ) : mostrarVoltar ? (
           <button
             type="button"
             onClick={onVoltarVisaoGeral}
             className="px-3.5 py-2 text-xs font-medium text-slate-700 hover:text-slate-900 border border-[#E2E8E4] hover:bg-[#F6F8F7] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            Voltar ao painel
+            {empresaAtiva ? 'Voltar ao painel' : 'Voltar à plataforma'}
           </button>
-        )}
+        ) : null}
       </div>
     </header>
   );

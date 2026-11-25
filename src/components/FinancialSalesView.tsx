@@ -29,6 +29,7 @@ import {
   formatarMoedaBRL,
   LABEL_FORMA_PAGAMENTO,
 } from '../utils/workspaceLogic';
+import {gerarOpcoesPeriodo} from '../utils/rolePermissions';
 import {EtapaVendaIndicador, StatusFinanceiroIndicador} from './StatusIndicator';
 
 interface FinancialSalesViewProps {
@@ -50,13 +51,6 @@ interface FinancialSalesViewProps {
   onExcluirVenda: (id: string) => void;
 }
 
-const PERIODOS_OPCOES = [
-  {valor: '2026-11', label: 'Novembro 2026'},
-  {valor: '2026-10', label: 'Outubro 2026'},
-  {valor: '2026-09', label: 'Setembro 2026'},
-  {valor: 'todos', label: 'Todos os períodos'},
-];
-
 export function FinancialSalesView({
   empresaId,
   empresaNome,
@@ -75,13 +69,19 @@ export function FinancialSalesView({
   onFaturarVenda,
   onExcluirVenda,
 }: FinancialSalesViewProps) {
+  const mesReferencia = dataReferenciaISO.slice(0, 7);
+  const opcoesPeriodo = gerarOpcoesPeriodo(mesReferencia, [
+    ...lancamentos.map((l) => l.data),
+    ...vendas.map((v) => v.dataPrevista),
+  ]);
+
   const [subAba, setSubAba] = useState<'economico' | 'vendas'>('economico');
-  const [periodoMes, setPeriodoMes] = useState<string>('2026-11');
+  const [periodoMes, setPeriodoMes] = useState<string>(mesReferencia);
   const [busca, setBusca] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<TipoLancamento | 'todos'>('todos');
   const [filtroStatus, setFiltroStatus] = useState<StatusFinanceiro | 'todos'>('todos');
   const [filtroEtapaVenda, setFiltroEtapaVenda] = useState<EtapaVenda | 'todas'>('todas');
-  const [mesSelecionadoGrafico, setMesSelecionadoGrafico] = useState<string>('2026-11');
+  const [mesSelecionadoGrafico, setMesSelecionadoGrafico] = useState<string>(mesReferencia);
 
   // Campos do Modal (suporta Receita, Despesa ou Venda)
   const [modoModal, setModoModal] = useState<'receita' | 'despesa' | 'venda'>('receita');
@@ -361,7 +361,7 @@ export function FinancialSalesView({
             onChange={(e) => setPeriodoMes(e.target.value)}
             className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
           >
-            {PERIODOS_OPCOES.map((p) => (
+            {opcoesPeriodo.map((p) => (
               <option key={p.valor} value={p.valor}>
                 {p.label}
               </option>
@@ -500,53 +500,59 @@ export function FinancialSalesView({
               )}
 
               {/* Barras agrupadas responsivas */}
-              <div className="mt-5 grid grid-cols-6 gap-2 sm:gap-4 items-end h-48 pt-4 border-b border-[#E2E8E4]">
-                {serieMensal.map((ponto) => {
-                  const alturaRec = Math.max(
-                    Math.round((ponto.receitas / maxValorSerie) * 140),
-                    4,
-                  );
-                  const alturaDesp = Math.max(
-                    Math.round((ponto.despesas / maxValorSerie) * 140),
-                    4,
-                  );
-                  const ativo = pontoAtivoGrafico?.mes === ponto.mes;
+              {serieMensal.length === 0 ? (
+                <div className="mt-5 py-12 text-center text-xs text-slate-500 border-b border-[#E2E8E4]">
+                  Nenhum lançamento financeiro cadastrado até o momento.
+                </div>
+              ) : (
+                <div className="mt-5 grid grid-cols-6 gap-2 sm:gap-4 items-end h-48 pt-4 border-b border-[#E2E8E4]">
+                  {serieMensal.map((ponto) => {
+                    const alturaRec = Math.max(
+                      Math.round((ponto.receitas / maxValorSerie) * 140),
+                      4,
+                    );
+                    const alturaDesp = Math.max(
+                      Math.round((ponto.despesas / maxValorSerie) * 140),
+                      4,
+                    );
+                    const ativo = pontoAtivoGrafico?.mes === ponto.mes;
 
-                  return (
-                    <button
-                      key={ponto.mes}
-                      type="button"
-                      onClick={() => setMesSelecionadoGrafico(ponto.mes)}
-                      aria-label={`Inspecionar ${ponto.label}: faturamento ${formatarMoedaBRL(ponto.receitas)}, despesas ${formatarMoedaBRL(ponto.despesas)}`}
-                      className={`flex flex-col items-center justify-end h-full pb-2 rounded-t-lg transition-colors cursor-pointer ${
-                        ativo ? 'bg-[#F1F7F3]' : 'hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-end gap-1.5 h-[148px]">
-                        <div
-                          className={`w-3.5 sm:w-5 rounded-t transition-all ${
-                            ativo ? 'bg-[#15803D]' : 'bg-[#22C55E]'
-                          }`}
-                          style={{height: `${alturaRec}px`}}
-                        />
-                        <div
-                          className={`w-3.5 sm:w-5 rounded-t transition-all ${
-                            ativo ? 'bg-slate-600' : 'bg-slate-300'
-                          }`}
-                          style={{height: `${alturaDesp}px`}}
-                        />
-                      </div>
-                      <span
-                        className={`mt-2 text-xs font-mono tabular-nums ${
-                          ativo ? 'font-semibold text-[#111915]' : 'text-slate-500'
+                    return (
+                      <button
+                        key={ponto.mes}
+                        type="button"
+                        onClick={() => setMesSelecionadoGrafico(ponto.mes)}
+                        aria-label={`Inspecionar ${ponto.label}: faturamento ${formatarMoedaBRL(ponto.receitas)}, despesas ${formatarMoedaBRL(ponto.despesas)}`}
+                        className={`flex flex-col items-center justify-end h-full pb-2 rounded-t-lg transition-colors cursor-pointer ${
+                          ativo ? 'bg-[#F1F7F3]' : 'hover:bg-slate-50'
                         }`}
                       >
-                        {ponto.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                        <div className="flex items-end gap-1.5 h-[148px]">
+                          <div
+                            className={`w-3.5 sm:w-5 rounded-t transition-all ${
+                              ativo ? 'bg-[#15803D]' : 'bg-[#22C55E]'
+                            }`}
+                            style={{height: `${alturaRec}px`}}
+                          />
+                          <div
+                            className={`w-3.5 sm:w-5 rounded-t transition-all ${
+                              ativo ? 'bg-slate-600' : 'bg-slate-300'
+                            }`}
+                            style={{height: `${alturaDesp}px`}}
+                          />
+                        </div>
+                        <span
+                          className={`mt-2 text-xs font-mono tabular-nums ${
+                            ativo ? 'font-semibold text-[#111915]' : 'text-slate-500'
+                          }`}
+                        >
+                          {ponto.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
             {/* Composição por Categoria + Resumo do Pipeline */}
