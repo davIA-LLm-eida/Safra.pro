@@ -3,12 +3,15 @@ import {
   AlertCircle,
   ArrowRight,
   Building2,
+  Check,
   CheckCircle2,
+  Copy,
   KeyRound,
   Lock,
   LogOut,
   Mail,
   RefreshCw,
+  Shield,
   ShieldCheck,
   TrendingUp,
   User,
@@ -60,6 +63,11 @@ interface AuthViewProps {
     nomeCompleto: string;
     cargo: string;
   }) => Promise<void>;
+  onSupabaseCadastrarPrincipal?: (dados: {
+    nomeCompleto: string;
+    email: string;
+    senha: string;
+  }) => Promise<{precisaConfirmarEmail: boolean}>;
   onSupabaseRecuperarSenha?: (email: string) => Promise<void>;
   onSupabaseRecarregarSessao?: () => Promise<void>;
   onSupabaseSair?: () => Promise<void>;
@@ -76,12 +84,13 @@ export function AuthView({
   onSupabaseCadastrarConta,
   onSupabaseAceitarConviteCadastro,
   onSupabaseProvisionarEmpresa,
+  onSupabaseCadastrarPrincipal,
   onSupabaseRecuperarSenha,
   onSupabaseRecarregarSessao,
   onSupabaseSair,
 }: AuthViewProps) {
-  const [aba, setAba] = useState<'entrar' | 'cadastrar' | 'convite'>('entrar');
-  const [abaOnboarding, setAbaOnboarding] = useState<'empresa' | 'convite'>('empresa');
+  const [aba, setAba] = useState<'entrar' | 'cadastrar' | 'convite' | 'principal'>('entrar');
+  const [abaOnboarding, setAbaOnboarding] = useState<'empresa' | 'convite' | 'principal'>('empresa');
   const [modoRecuperacao, setModoRecuperacao] = useState(false);
 
   const [emailLogin, setEmailLogin] = useState(
@@ -107,6 +116,12 @@ export function AuthView({
   const [nomeConvite, setNomeConvite] = useState('');
   const [emailConvite, setEmailConvite] = useState('');
   const [senhaConvite, setSenhaConvite] = useState('');
+
+  // Campos de Administrador Principal
+  const [nomePrincipal, setNomePrincipal] = useState('');
+  const [emailPrincipal, setEmailPrincipal] = useState('');
+  const [senhaPrincipal, setSenhaPrincipal] = useState('');
+  const [sqlCopiado, setSqlCopiado] = useState(false);
 
   function limparMensagens() {
     setErro(null);
@@ -298,6 +313,64 @@ export function AuthView({
     }
   }
 
+  async function handleCadastrarPrincipalSubmit(e: FormEvent) {
+    e.preventDefault();
+    limparMensagens();
+    if (!onSupabaseCadastrarPrincipal) return;
+
+    if (!nomePrincipal.trim() || !emailPrincipal.trim() || senhaPrincipal.trim().length < 6) {
+      setErro('Informe seu nome, e-mail e uma senha com pelo menos 6 caracteres.');
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      setAbaOnboarding('principal');
+      const res = await onSupabaseCadastrarPrincipal({
+        nomeCompleto: nomePrincipal.trim(),
+        email: emailPrincipal.trim(),
+        senha: senhaPrincipal,
+      });
+      if (res.precisaConfirmarEmail) {
+        setSucesso(
+          'Conta de acesso criada! Confirme o e-mail enviado pelo Supabase e depois entre na aba "Entrar" para concluir a ativação do acesso Principal.',
+        );
+        setSenhaPrincipal('');
+      }
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Erro ao criar conta de acesso.');
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function handleCopiarSqlPrincipal(userId: string) {
+    const sql = `INSERT INTO safra_interno.principais (user_id)\nVALUES ('${userId}')\nON CONFLICT (user_id) DO NOTHING;`;
+    try {
+      await navigator.clipboard.writeText(sql);
+      setSqlCopiado(true);
+      setTimeout(() => setSqlCopiado(false), 2500);
+    } catch {
+      setSqlCopiado(false);
+    }
+  }
+
+  async function handleVerificarPrincipal() {
+    limparMensagens();
+    if (!onSupabaseRecarregarSessao) return;
+    setEnviando(true);
+    try {
+      await onSupabaseRecarregarSessao();
+      setErro(
+        'Acesso Principal ainda não liberado no Supabase. Confirme seu e-mail (se pendente) e execute o comando SQL acima no SQL Editor do projeto.',
+      );
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Erro ao verificar acesso Principal.');
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#F6F8F7] flex flex-col lg:flex-row">
       {/* Painel esquerdo institucional com identidade safra.pro */}
@@ -435,7 +508,7 @@ export function AuthView({
               <div
                 role="tablist"
                 aria-label="Escolha como vincular sua conta"
-                className="grid grid-cols-2 gap-1 p-1 bg-[#F1F5F2] rounded-lg"
+                className="grid grid-cols-3 gap-1 p-1 bg-[#F1F5F2] rounded-lg"
               >
                 <button
                   type="button"
@@ -451,7 +524,7 @@ export function AuthView({
                       : 'text-slate-600 hover:text-[#111915]'
                   }`}
                 >
-                  Criar minha empresa
+                  Criar empresa
                 </button>
                 <button
                   type="button"
@@ -467,7 +540,23 @@ export function AuthView({
                       : 'text-slate-600 hover:text-[#111915]'
                   }`}
                 >
-                  Tenho um convite
+                  Tenho convite
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={abaOnboarding === 'principal'}
+                  onClick={() => {
+                    setAbaOnboarding('principal');
+                    limparMensagens();
+                  }}
+                  className={`py-2 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                    abaOnboarding === 'principal'
+                      ? 'bg-white text-[#111915] shadow-xs'
+                      : 'text-slate-600 hover:text-[#111915]'
+                  }`}
+                >
+                  Sou Principal
                 </button>
               </div>
 
@@ -574,7 +663,7 @@ export function AuthView({
                     {enviando ? 'Criando empresa...' : 'Provisionar empresa e entrar'}
                   </button>
                 </form>
-              ) : (
+              ) : abaOnboarding === 'convite' ? (
                 <form onSubmit={handleAceitarConviteOnboardingSubmit} className="space-y-3.5">
                   <div>
                     <label
@@ -617,6 +706,60 @@ export function AuthView({
                     {enviando ? 'Validando convite...' : 'Aceitar convite e entrar'}
                   </button>
                 </form>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-3.5 bg-[#F6F8F7] border border-[#E2E8E4] rounded-lg space-y-2 text-xs text-slate-700">
+                    <p className="font-semibold text-[#111915] flex items-center gap-1.5">
+                      <Shield className="w-4 h-4 text-[#15803D]" aria-hidden="true" />
+                      <span>Ativação de Administrador Principal</span>
+                    </p>
+                    <p className="leading-relaxed">
+                      Por segurança do banco de dados, o perfil Principal (dono da plataforma que
+                      acompanha todas as empresas) só pode ser autorizado diretamente pelo{' '}
+                      <strong>SQL Editor</strong> do Supabase.
+                    </p>
+                    <p className="font-mono text-[11px] bg-white border border-[#E2E8E4] rounded p-2 break-all text-[#111915]">
+                      UID: {usuarioAuthPendente.id}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-700">
+                        Execute uma vez no SQL Editor do Supabase:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopiarSqlPrincipal(usuarioAuthPendente.id)}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-[#15803D] hover:text-[#166534] cursor-pointer"
+                      >
+                        {sqlCopiado ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                            <span>Copiado</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+                            <span>Copiar SQL</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <pre className="p-3 bg-[#141715] text-stone-100 text-[11px] font-mono rounded-lg overflow-x-auto leading-relaxed">
+                      {`INSERT INTO safra_interno.principais (user_id)\nVALUES ('${usuarioAuthPendente.id}')\nON CONFLICT (user_id) DO NOTHING;`}
+                    </pre>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={enviando || !usuarioAuthPendente.emailConfirmado}
+                    onClick={() => void handleVerificarPrincipal()}
+                    className="w-full py-2.5 px-4 bg-[#15803D] hover:bg-[#166534] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                  >
+                    {enviando ? 'Verificando...' : 'Já ativei no Supabase — entrar como Principal'}
+                  </button>
+                </div>
               )}
             </div>
           ) : (
@@ -1072,6 +1215,112 @@ export function AuthView({
                     {enviando ? 'Validando convite...' : 'Criar conta e aceitar convite'}
                   </button>
                 </form>
+              )}
+              {aba === 'principal' && modoSupabase && (
+                <form onSubmit={handleCadastrarPrincipalSubmit} className="space-y-3.5">
+                  <div className="p-3 bg-[#F6F8F7] border border-[#E2E8E4] rounded-lg text-xs text-slate-700 leading-relaxed space-y-1">
+                    <p className="font-semibold text-[#111915] flex items-center gap-1.5">
+                      <Shield className="w-4 h-4 text-[#15803D]" aria-hidden="true" />
+                      <span>Conta do Administrador Principal (Plataforma)</span>
+                    </p>
+                    <p>
+                      Crie sua conta sem vincular nenhuma empresa. Após confirmar seu e-mail,
+                      exibiremos o comando SQL único para autorizar seu usuário em{' '}
+                      <code className="font-mono">safra_interno.principais</code>.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="pri-nome"
+                      className="block text-sm font-medium text-slate-700 mb-1"
+                    >
+                      Seu nome completo *
+                    </label>
+                    <input
+                      id="pri-nome"
+                      type="text"
+                      value={nomePrincipal}
+                      onChange={(e) => setNomePrincipal(e.target.value)}
+                      placeholder="Nome do administrador principal"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="pri-email"
+                      className="block text-sm font-medium text-slate-700 mb-1"
+                    >
+                      E-mail de acesso *
+                    </label>
+                    <input
+                      id="pri-email"
+                      type="email"
+                      value={emailPrincipal}
+                      onChange={(e) => setEmailPrincipal(e.target.value)}
+                      placeholder="seu-email@dominio.com.br"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="pri-senha"
+                      className="block text-sm font-medium text-slate-700 mb-1"
+                    >
+                      Senha (mínimo 6 caracteres) *
+                    </label>
+                    <input
+                      id="pri-senha"
+                      type="password"
+                      minLength={6}
+                      value={senhaPrincipal}
+                      onChange={(e) => setSenhaPrincipal(e.target.value)}
+                      placeholder="Crie uma senha forte"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={enviando}
+                    className="w-full py-2.5 px-4 bg-[#15803D] hover:bg-[#166534] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                  >
+                    {enviando ? 'Criando conta...' : 'Criar conta Principal'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAba('entrar');
+                      limparMensagens();
+                    }}
+                    className="w-full text-center text-xs font-medium text-slate-600 hover:text-[#111915] cursor-pointer"
+                  >
+                    Já tenho conta — voltar para Entrar
+                  </button>
+                </form>
+              )}
+
+              {modoSupabase && aba !== 'principal' && (
+                <div className="mt-5 pt-4 border-t border-[#E2E8E4] text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAba('principal');
+                      setModoRecuperacao(false);
+                      limparMensagens();
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-[#15803D] cursor-pointer"
+                  >
+                    <Shield className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Acesso do Administrador Principal (dono da plataforma)</span>
+                  </button>
+                </div>
               )}
             </div>
           )}

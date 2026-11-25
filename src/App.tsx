@@ -517,6 +517,23 @@ export default function App() {
     return {precisaConfirmarEmail: false};
   }
 
+  async function handleSupabaseCadastrarPrincipal(dados: {
+    nomeCompleto: string;
+    email: string;
+    senha: string;
+  }): Promise<{precisaConfirmarEmail: boolean}> {
+    if (!repo) return {precisaConfirmarEmail: false};
+    const res = await repo.cadastrarContaAuth(
+      dados.email,
+      dados.senha,
+      dados.nomeCompleto,
+    );
+    if (!res.precisaConfirmarEmail) {
+      await sincronizarSessaoSupabase();
+    }
+    return {precisaConfirmarEmail: res.precisaConfirmarEmail};
+  }
+
   async function handleSupabaseRecuperarSenha(email: string) {
     if (!repo) return;
     await repo.enviarRecuperacaoSenha(email);
@@ -1081,6 +1098,7 @@ export default function App() {
         onSupabaseCadastrarConta={handleSupabaseCadastrarConta}
         onSupabaseAceitarConviteCadastro={handleSupabaseAceitarConvite}
         onSupabaseProvisionarEmpresa={handleSupabaseProvisionarEmpresa}
+        onSupabaseCadastrarPrincipal={handleSupabaseCadastrarPrincipal}
         onSupabaseRecuperarSenha={handleSupabaseRecuperarSenha}
         onSupabaseRecarregarSessao={sincronizarSessaoSupabase}
         onSupabaseSair={handleSair}
